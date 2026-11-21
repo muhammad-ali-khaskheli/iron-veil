@@ -1,76 +1,5 @@
 extends Node
-## Mission controller for Iron Veil: story beats, waves, win/lose, mission switching.
-
-# Each mission: intro lines [speaker, text, seconds], waves, extraction flag, outro lines.
-const LEVELS: Array = [
-	{
-		"title": "NIGHT BREACH", "sub": "Black Meridian compound  |  02:14 local",
-		"intro": [
-			["Col. Hale", "Specter, this is Hale. Black Meridian is moving a prototype weapon through that compound. Codename Veil-7. It ships at dawn.", 5.5],
-			["Raven", "I'm on the ridge with eyes on the courtyard. A dozen hostiles, maybe more. Lights are on and they're jumpy.", 5.0],
-			["Col. Hale", "Clear the yard, take the transfer log from the depot, and reach the pad. Nobody can know we were ever there.", 5.0],
-		],
-		"waves": [
-			{"count": 5, "hp": 40.0, "aggr": 0.7, "obj": "Clear the courtyard",
-			 "line": ["Raven", "Contacts ahead! They're pouring out from behind the crates.", 3.5],
-			 "after": ["Raven", "Yard's clear. Keep moving, Specter. The depot garrison just woke up.", 4.0], "clear_banner": "COURTYARD CLEAR"},
-			{"count": 6, "hp": 45.0, "aggr": 0.8, "obj": "Eliminate the depot garrison",
-			 "line": ["Col. Hale", "They've called reinforcements. Hit them hard and fast, Specter.", 4.0]},
-		],
-		"extract": true, "extract_banner": "TRANSFER LOG SECURED",
-		"extract_line": ["Col. Hale", "Good work. Chopper is two minutes out. Get to the green beacon.", 4.5],
-		"outro": [
-			["Raven", "Specter... don't get on that bird. Do you hear me? Don't board.", 4.5],
-			["Col. Hale", "Well done, Specter. The transfer log names the man who bought Veil-7. A pity it names me.", 5.5],
-			["Raven", "Hale sold it. All of it. Stay in the shadows, I'm coming down for you.", 5.0],
-		],
-		"end_title": "MISSION COMPLETE", "end_text": "The log is in your hands. Hale has turned on you.\nNext: Port Sarnak.",
-	},
-	{
-		"title": "PORT SARNAK", "sub": "Container yard  |  05:40 local",
-		"intro": [
-			["Raven", "Hale has gone dark, but his money hasn't. Everything moved through Port Sarnak. The container yard belongs to his fixer, Dmitri Volk.", 6.0],
-			["Raven", "No more orders from command, Specter. Just you and me. Find the shipping manifest at the far pier.", 5.0],
-		],
-		"waves": [
-			{"count": 6, "hp": 45.0, "aggr": 0.8, "obj": "Fight through the container yard",
-			 "line": ["Raven", "Volk's crew is dug in between the containers. Use the cover.", 4.0],
-			 "after": ["Raven", "Yard's thinning out. Volk is calling in his dock guards.", 4.0], "clear_banner": "YARD CLEARED"},
-			{"count": 7, "hp": 50.0, "aggr": 0.9, "obj": "Break the dock guard",
-			 "line": ["Volk", "Kill him! Nobody leaves my port alive!", 3.5]},
-		],
-		"extract": true, "extract_banner": "MANIFEST RECOVERED",
-		"extract_line": ["Raven", "Got the manifest. Meet me at the pad, Specter. Quickly.", 4.0],
-		"outro": [
-			["Raven", "The manifest shows Veil-7 going to the Frozen Relay, up in the mountains. Hale is arming it there.", 5.5],
-			["Raven", "Tomorrow he sells it to the highest bidder. We hit him at first light.", 4.5],
-		],
-		"end_title": "MISSION COMPLETE", "end_text": "Volk's network is broken.\nNext: Frozen Relay.",
-	},
-	{
-		"title": "FROZEN RELAY", "sub": "Mountain station  |  06:50 local",
-		"intro": [
-			["Raven", "The relay station is the only place Veil-7 can be broadcast from. Hale's private guard holds the whole mountain.", 5.5],
-			["Raven", "Whatever happens up there, finish it, Specter. For everyone Veil-7 would have hurt.", 4.5],
-		],
-		"waves": [
-			{"count": 5, "hp": 50.0, "aggr": 0.85, "obj": "Secure the lower perimeter",
-			 "line": ["Raven", "Guards on the treeline. Watch your flanks in the snow.", 4.0],
-			 "after": ["Raven", "Perimeter's down. The bunkers are next.", 3.5], "clear_banner": "PERIMETER SECURE"},
-			{"count": 6, "hp": 55.0, "aggr": 0.95, "obj": "Storm the bunkers",
-			 "line": ["Raven", "They're coming out of the bunkers. Stay mobile!", 3.5],
-			 "after": ["Raven", "That's the last of his guard. Hale is coming out himself.", 4.0], "clear_banner": "BUNKERS CLEARED"},
-			{"count": 5, "hp": 55.0, "aggr": 1.0, "obj": "Take down Colonel Hale", "boss": true,
-			 "line": ["Col. Hale", "You should have stayed dead, Specter. I built you. I can end you.", 5.0]},
-		],
-		"extract": false,
-		"outro": [
-			["Col. Hale", "Veil-7... was always going to... outlive us all.", 4.0],
-			["Raven", "It's over. Veil-7 is destroyed, and so is Hale's network. Come home, Specter.", 5.0],
-		],
-		"end_title": "CAMPAIGN COMPLETE", "end_text": "Hale is down and Veil-7 is gone.\nThanks for playing Iron Veil.",
-	},
-]
+## Mission controller: runs each mission as a chain of story "beats" with checkpoints.
 
 var world: GameWorld
 var player: Player
@@ -81,10 +10,22 @@ var state: String = "menu"
 var enemies_alive: int = 0
 var kills: int = 0
 var _menu_time: float = 0.0
+var _enemies: Array = []
+var _marker: Node3D = null
+var _beat_pos: Vector3 = Vector3.ZERO
+var _show_dist: bool = false
+var _alarm_said: bool = false
+var _death_text: String = "Specter is down."
+var _mission: Dictionary = {}
+var _smoke: bool = false   # automated self-test mode (CI only)
 
 
 func _ready() -> void:
 	randomize()
+	_smoke = OS.get_environment("IV_SMOKE") != ""
+	if _smoke and OS.get_environment("IV_LEVEL") != "":
+		GameState.level = int(OS.get_environment("IV_LEVEL"))
+		GameState.reset_checkpoint()
 	world = GameWorld.new()
 	add_child(world)
 	world.build(GameState.level)
@@ -92,6 +33,8 @@ func _ready() -> void:
 	var use_touch: bool = OS.has_feature("mobile") or DisplayServer.is_touchscreen_available()
 	player = Player.new()
 	player.position = world.player_start
+	if GameState.checkpoint_beat > 0:
+		player.position = GameState.checkpoint_pos + Vector3(0, 0.3, 0)
 	player.frozen = true
 	if use_touch:
 		touch = TouchUI.new()
@@ -107,6 +50,8 @@ func _ready() -> void:
 	player.ammo_changed.connect(hud.set_ammo)
 	player.hit_marker.connect(hud.show_hit)
 	player.damaged.connect(hud.flash_damage)
+	player.cover_changed.connect(hud.set_cover)
+	player.fired.connect(_on_player_fired)
 	player.died.connect(_on_player_died)
 	hud.start_pressed.connect(_on_start)
 	hud.retry_pressed.connect(_on_end_button)
@@ -124,23 +69,25 @@ func _ready() -> void:
 	if touch == null:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
+	if _smoke:
+		player.god = true
+		GameState.skip_menu = true
 	if GameState.skip_menu:
 		GameState.skip_menu = false
 		hud.show_menu(false)
 		state = "intro"
-		_mission.call_deferred()
+		_run_mission.call_deferred()
 
 
 func _process(delta: float) -> void:
 	if state == "menu":
 		_menu_time += delta
 		player.rotation.y = sin(_menu_time * 0.15) * 0.5
-	elif state == "extract":
-		var flat: Vector3 = player.global_position - world.extract_pos
-		flat.y = 0.0
-		if flat.length() < 4.5:
-			state = "finale"
-			_finale()
+	if _show_dist and state != "dead" and state != "menu":
+		var d: float = Vector2(player.global_position.x - _beat_pos.x, player.global_position.z - _beat_pos.z).length()
+		hud.set_distance("%d m" % int(d))
+	else:
+		hud.set_distance("")
 
 
 # ---------------------------------------------------------------- scene switching
@@ -148,6 +95,7 @@ func _process(delta: float) -> void:
 func _go_to_level(lvl: int, skip_menu: bool) -> void:
 	GameState.level = lvl
 	GameState.skip_menu = skip_menu
+	GameState.reset_checkpoint()
 	get_tree().reload_current_scene()
 
 
@@ -157,7 +105,7 @@ func _on_start(lvl: int) -> void:
 	if lvl == GameState.level:
 		state = "intro"
 		hud.show_menu(false)
-		_mission()
+		_run_mission()
 	else:
 		_go_to_level(lvl, true)
 
@@ -168,90 +116,240 @@ func _on_main_menu() -> void:
 
 func _on_end_button() -> void:
 	if state == "done":
-		if GameState.level < LEVELS.size():
+		if GameState.level < Missions.COUNT:
 			_go_to_level(GameState.level + 1, true)
 		else:
 			_go_to_level(1, false)
 	else:
-		_go_to_level(GameState.level, true)   # retry after death
+		# Retry from the last checkpoint.
+		GameState.skip_menu = true
+		get_tree().reload_current_scene()
 
 
-# ---------------------------------------------------------------- mission flow
+# ---------------------------------------------------------------- mission runner
 
-func _line(who: String, text: String, secs: float) -> void:
-	await hud.say(who, text, secs)
+func _say_async(lines: Array) -> void:
+	for l in lines:
+		await hud.say(l[0], l[1], l[2])
 
 
-func _mission() -> void:
-	var L: Dictionary = LEVELS[GameState.level - 1]
-	await hud.fade_to(1.0, 0.6)
-	hud.banner(L["title"], L["sub"], 4.0)
-	await get_tree().create_timer(1.0).timeout
-	for l in L["intro"]:
-		await _line(l[0], l[1], l[2])
+func _run_mission() -> void:
+	_mission = Missions.get_mission(GameState.level)
+	var start: int = GameState.checkpoint_beat
+	await hud.fade_to(1.0, 0.5)
+	if start == 0:
+		hud.banner(_mission["title"], _mission["sub"], 4.0)
+		await get_tree().create_timer(1.0).timeout
+		for l in _mission["intro"]:
+			await hud.say(l[0], l[1], l[2])
+	else:
+		hud.banner("CHECKPOINT", _mission["title"], 2.0)
+		await get_tree().create_timer(1.2).timeout
 	hud.clear_subtitle()
 	if touch != null:
 		touch.set_process_input(true)
 	else:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	await hud.fade_to(0.0, 1.2)
+	await hud.fade_to(0.0, 1.0)
 	hud.set_hud_visible(true)
 	player.frozen = false
+	state = "play"
+	if _smoke:
+		_smoke_player_test()
 
-	var wave_list: Array = L["waves"]
-	for i in wave_list.size():
-		var wd: Dictionary = wave_list[i]
-		state = "wave"
-		if i > 0:
-			player.add_ammo()
-		hud.set_objective(wd["obj"])
-		_spawn_wave(world.waves[i], int(wd["count"]), float(wd["hp"]), float(wd["aggr"]))
-		if wd.get("boss", false):
-			_spawn_boss(world.waves[i][0])
-			hud.banner("COLONEL HALE", "Heavily armoured", 3.0)
-		var ln: Array = wd["line"]
-		_line(ln[0], ln[1], ln[2])
+	var beats: Array = _mission["beats"]
+	for i in beats.size():
+		var b: Dictionary = beats[i]
+		if i < start:
+			_apply_persistent(b)
+			continue
+		if _smoke:
+			print("SMOKE_BEAT ", GameState.level, " ", i, " ", b["type"])
+		var ok: bool = await _run_beat(b)
+		if not ok:
+			return
+		GameState.checkpoint_beat = i + 1
+		GameState.checkpoint_pos = player.global_position
+	_finale()
+
+
+func _run_beat(b: Dictionary) -> bool:
+	_alarm_said = false
+	match b["type"]:
+		"talk":
+			for l in b["lines"]:
+				await hud.say(l[0], l[1], l[2])
+			return state != "dead"
+		"goto":
+			return await _beat_goto(b)
+		"kill":
+			return await _beat_kill(b)
+		"zone":
+			return await _beat_zone(b)
+		"event":
+			return await _beat_event(b)
+	return true
+
+
+func _apply_persistent(b: Dictionary) -> void:
+	if b.has("remove"):
+		var n: Node = world.get_node_or_null(str(b["remove"]))
+		if n != null:
+			n.queue_free()
+
+
+# ---------------------------------------------------------------- beat types
+
+func _beat_goto(b: Dictionary) -> bool:
+	_set_objective(b["obj"], b["pos"])
+	if b.has("lines"):
+		_say_async(b["lines"])
+	var ambush_done: bool = false
+	var t_left: float = float(b.get("time", -1.0))
+	var last: int = Time.get_ticks_msec()
+	while true:
+		await get_tree().create_timer(0.1).timeout
+		if state == "dead":
+			hud.set_timer("")
+			return false
+		var now: int = Time.get_ticks_msec()
+		var dt: float = float(now - last) / 1000.0
+		last = now
+		if _smoke:
+			var sz: float = b["pos"].z
+			if b.has("ambush") and not ambush_done:
+				sz += float(b["ambush"]["dist"]) - 1.0
+			player.global_position = Vector3(b["pos"].x, 0.6, sz)
+		var d: float = _flat_dist(player.global_position, b["pos"])
+		if d < float(b["r"]):
+			break
+		if b.has("ambush") and not ambush_done and d < float(b["ambush"]["dist"]):
+			ambush_done = true
+			_spawn_group(b["ambush"]["spawns"])
+			var al: Array = b["ambush"]["line"]
+			hud.say(al[0], al[1], al[2])
+		if t_left > 0.0:
+			t_left -= dt
+			hud.set_timer("%d" % int(ceil(maxf(t_left, 0.0))))
+			if t_left <= 0.0:
+				_death_text = "You ran out of time."
+				Fx.explosion(world, player.global_position)
+				player.take_damage(9999.0)
+	hud.set_timer("")
+	_clear_marker()
+	return true
+
+
+func _beat_kill(b: Dictionary) -> bool:
+	_set_objective(b["obj"])
+	if b.has("lines"):
+		_say_async(b["lines"])
+	_spawn_group(b["spawns"])
+	if b.has("boss"):
+		_spawn_boss(b["boss"])
+		hud.banner("COLONEL HALE", "Heavily armoured", 3.0)
+	await _wait_clear()
+	return state != "dead"
+
+
+func _beat_zone(b: Dictionary) -> bool:
+	_set_objective(b["obj"], b["pos"])
+	var device: Node3D = null
+	if b.has("device"):
+		device = _place_device(b["pos"], str(b["device"]))
+	if b.has("lines"):
+		_say_async(b["lines"])
+	var secs: float = float(b["secs"])
+	var progress: float = 0.0
+	var elapsed: float = 0.0
+	var waves: Array = []
+	if b.has("waves"):
+		waves = (b["waves"] as Array).duplicate()
+	var last: int = Time.get_ticks_msec()
+	while progress < secs:
+		await get_tree().create_timer(0.1).timeout
+		if state == "dead":
+			hud.hide_progress()
+			return false
+		var now: int = Time.get_ticks_msec()
+		var dt: float = float(now - last) / 1000.0
+		last = now
+		if _smoke:
+			player.global_position = Vector3(b["pos"].x, 0.6, b["pos"].z)
+		var inside: bool = _flat_dist(player.global_position, b["pos"]) < float(b["r"])
+		if inside:
+			progress += dt
+			elapsed += dt
+		else:
+			progress = maxf(progress - dt * 0.5, 0.0)
+		var label: String = str(b["label"])
+		if not inside:
+			label += "  (return to the marker!)"
+		hud.show_progress(label, progress / secs)
+		for w in waves.duplicate():
+			if elapsed >= float(w["t"]):
+				waves.erase(w)
+				_spawn_group(w["spawns"])
+				var wl: Array = w["line"]
+				hud.say(wl[0], wl[1], wl[2])
+	hud.hide_progress()
+	_clear_marker()
+	if bool(b.get("explode", false)):
+		var boom: Vector3 = b.get("boom", b["pos"])
+		Fx.explosion(world, boom + Vector3(0, 1.2, 0))
+		player.shake(1.4)
+		if device != null and str(b.get("device", "")) == "charge":
+			device.queue_free()
+	if b.has("remove"):
+		_apply_persistent(b)
+	if bool(b.get("clear", false)):
+		_set_objective("Eliminate the remaining hostiles")
 		await _wait_clear()
 		if state == "dead":
-			return
-		if i < wave_list.size() - 1:
-			player.add_ammo()
-			hud.set_objective("Push forward")
-			hud.banner(wd.get("clear_banner", "AREA CLEAR"), "", 2.0)
-			var af: Array = wd["after"]
-			_line(af[0], af[1], af[2])
-			await get_tree().create_timer(6.0).timeout
-			if state == "dead":
-				return
-
-	player.add_ammo()
-	if L["extract"]:
-		state = "extract"
-		hud.set_objective("Reach the extraction pad")
-		hud.banner(L["extract_banner"], "Move to extraction", 3.0)
-		var el: Array = L["extract_line"]
-		_line(el[0], el[1], el[2])
-	else:
-		state = "finale"
-		_finale()
+			return false
+	return true
 
 
-func _spawn_wave(points: Array, count: int, hp: float, aggression: float) -> void:
+func _beat_event(b: Dictionary) -> bool:
+	match str(b["name"]):
+		"heli":
+			_heli_flyover()
+			await get_tree().create_timer(2.5).timeout
+		"explode":
+			Fx.explosion(world, b["pos"] + Vector3(0, 1.2, 0))
+			player.shake(0.9)
+			await get_tree().create_timer(1.0).timeout
+	return state != "dead"
+
+
+# ---------------------------------------------------------------- spawning and enemies
+
+func _spawn_group(spawns: Array) -> void:
 	var lvl: int = GameState.level
 	var acc: float = [1.0, 1.2, 1.4][lvl - 1]
 	var dmg: float = [1.0, 1.15, 1.3][lvl - 1]
-	for i in count:
-		var e := Enemy.new()
-		e.player = player
-		e.health = hp
-		e.aggression = aggression
-		e.accuracy_mult = acc
-		e.damage_mult = dmg
-		var p: Vector3 = points[i % points.size()]
-		e.position = p + Vector3(randf_range(-1.5, 1.5), 0.0, randf_range(-1.5, 1.5))
-		e.died.connect(_on_enemy_died)
-		world.add_child(e)
-		enemies_alive += 1
+	var hp: float = [40.0, 50.0, 55.0][lvl - 1]
+	var aggr: float = [0.7, 0.85, 1.0][lvl - 1]
+	for s in spawns:
+		for i in int(s["n"]):
+			var e := Enemy.new()
+			e.player = player
+			e.health = hp
+			e.aggression = aggr
+			e.accuracy_mult = acc
+			e.damage_mult = dmg
+			e.unaware = bool(s.get("unaware", false))
+			e.hold_post = bool(s.get("hold", false))
+			if s.has("patrol"):
+				e.patrol.assign(s["patrol"])
+			var p: Vector3 = s["p"]
+			var jitter: float = 0.0 if e.unaware or e.hold_post else 1.5
+			e.position = p + Vector3(randf_range(-jitter, jitter), 0.0, randf_range(-jitter, jitter))
+			e.died.connect(_on_enemy_died)
+			e.alerted.connect(_on_enemy_alerted)
+			world.add_child(e)
+			_enemies.append(e)
+			enemies_alive += 1
 	hud.set_enemies_left(enemies_alive)
 
 
@@ -264,23 +362,211 @@ func _spawn_boss(point: Vector3) -> void:
 	e.accuracy_mult = 1.3
 	e.damage_mult = 1.4
 	e.scale = Vector3(1.25, 1.25, 1.25)
-	e.position = point + Vector3(0, 0, -3)
+	e.position = point
 	e.died.connect(_on_enemy_died)
+	e.alerted.connect(_on_enemy_alerted)
 	world.add_child(e)
+	_enemies.append(e)
 	enemies_alive += 1
 	hud.set_enemies_left(enemies_alive)
 
 
-func _on_enemy_died(_e: Enemy) -> void:
+func _on_enemy_died(e: Enemy) -> void:
 	enemies_alive -= 1
 	kills += 1
+	_enemies.erase(e)
 	hud.set_enemies_left(enemies_alive)
+
+
+func _on_enemy_alerted(e: Enemy) -> void:
+	if not _alarm_said:
+		_alarm_said = true
+		hud.say("Raven", "You've been spotted! They'll raise the alarm!", 3.0)
+	# Nearby guards hear the commotion.
+	for o in _enemies:
+		if is_instance_valid(o) and o != e and o.unaware and o.global_position.distance_to(e.global_position) < 25.0:
+			o.alert()
+
+
+func _on_player_fired() -> void:
+	var w: Dictionary = player.current_weapon()
+	var noise: float = 12.0 if w.get("suppressed", false) else 55.0
+	for o in _enemies:
+		if is_instance_valid(o) and o.unaware and o.global_position.distance_to(player.global_position) < noise:
+			o.alert()
 
 
 func _wait_clear() -> void:
 	while enemies_alive > 0 and state != "dead":
 		await get_tree().create_timer(0.4).timeout
+		if _smoke:
+			await get_tree().create_timer(0.6).timeout
+			for e in _enemies.duplicate():
+				if is_instance_valid(e):
+					e.take_damage(9999.0)
 
+
+func _flat_dist(a: Vector3, b: Vector3) -> float:
+	return Vector2(a.x - b.x, a.z - b.z).length()
+
+
+# ---------------------------------------------------------------- objective markers, devices, helicopter
+
+func _set_objective(text: String, pos: Vector3 = Vector3.INF) -> void:
+	hud.set_objective(text)
+	_clear_marker()
+	if pos == Vector3.INF:
+		_show_dist = false
+		return
+	_beat_pos = pos
+	_show_dist = true
+	_marker = Node3D.new()
+	var beam := MeshInstance3D.new()
+	var cm := CylinderMesh.new()
+	cm.top_radius = 0.6
+	cm.bottom_radius = 0.6
+	cm.height = 40.0
+	beam.mesh = cm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(0.3, 0.8, 1.0, 0.22)
+	beam.material_override = m
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	beam.position = Vector3(0, 20, 0)
+	_marker.add_child(beam)
+	var l := OmniLight3D.new()
+	l.light_color = Color(0.4, 0.85, 1.0)
+	l.light_energy = 1.5
+	l.omni_range = 8.0
+	l.position = Vector3(0, 1.5, 0)
+	_marker.add_child(l)
+	world.add_child(_marker)
+	_marker.global_position = Vector3(pos.x, 0, pos.z)
+
+
+func _clear_marker() -> void:
+	if _marker != null and is_instance_valid(_marker):
+		_marker.queue_free()
+	_marker = null
+
+
+func _place_device(pos: Vector3, kind: String) -> Node3D:
+	var root := Node3D.new()
+	var body := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	var screen_col: Color = Color(1.0, 0.15, 0.1) if kind == "charge" else Color(0.2, 1.0, 0.6)
+	var dark := StandardMaterial3D.new()
+	dark.albedo_color = Color(0.1, 0.11, 0.13)
+	dark.metallic = 0.6
+	dark.roughness = 0.4
+	if kind == "charge":
+		bm.size = Vector3(0.9, 0.6, 0.5)
+		body.position = Vector3(0, 0.3, 0)
+	else:
+		bm.size = Vector3(1.2, 1.3, 0.7)
+		body.position = Vector3(0, 0.65, 0)
+	body.mesh = bm
+	body.material_override = dark
+	root.add_child(body)
+	var screen := MeshInstance3D.new()
+	var sm := BoxMesh.new()
+	sm.size = Vector3(0.7, 0.35, 0.06) if kind != "charge" else Vector3(0.5, 0.2, 0.06)
+	screen.mesh = sm
+	var gm := StandardMaterial3D.new()
+	gm.albedo_color = screen_col
+	gm.emission_enabled = true
+	gm.emission = screen_col
+	gm.emission_energy_multiplier = 3.0
+	screen.material_override = gm
+	screen.position = Vector3(0, 0.85 if kind != "charge" else 0.35, 0.28 if kind != "charge" else 0.26)
+	root.add_child(screen)
+	var l := OmniLight3D.new()
+	l.light_color = screen_col
+	l.light_energy = 1.2
+	l.omni_range = 6.0
+	l.position = Vector3(0, 1.4, 0.8)
+	root.add_child(l)
+	world.add_child(root)
+	root.global_position = Vector3(pos.x, 0, pos.z)
+	return root
+
+
+func _heli_flyover() -> void:
+	var heli := Node3D.new()
+	var body := MeshInstance3D.new()
+	var bm := BoxMesh.new()
+	bm.size = Vector3(2.6, 2.2, 7.5)
+	body.mesh = bm
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(0.08, 0.09, 0.1)
+	mat.metallic = 0.5
+	body.material_override = mat
+	heli.add_child(body)
+	var tail := MeshInstance3D.new()
+	var tm := BoxMesh.new()
+	tm.size = Vector3(0.5, 0.6, 6.0)
+	tail.mesh = tm
+	tail.material_override = mat
+	tail.position = Vector3(0, 0.4, 6.0)
+	heli.add_child(tail)
+	var rotor := MeshInstance3D.new()
+	var rm := BoxMesh.new()
+	rm.size = Vector3(14.0, 0.08, 0.5)
+	rotor.mesh = rm
+	rotor.material_override = mat
+	rotor.position = Vector3(0, 1.4, 0)
+	heli.add_child(rotor)
+	var spot := SpotLight3D.new()
+	spot.light_energy = 12.0
+	spot.spot_range = 60.0
+	spot.spot_angle = 22.0
+	spot.rotation_degrees = Vector3(-80, 0, 0)
+	spot.position = Vector3(0, -0.8, -2.0)
+	heli.add_child(spot)
+	var red := MeshInstance3D.new()
+	var sph := SphereMesh.new()
+	sph.radius = 0.2
+	sph.height = 0.4
+	red.mesh = sph
+	var rm2 := StandardMaterial3D.new()
+	rm2.albedo_color = Color(1, 0.1, 0.1)
+	rm2.emission_enabled = true
+	rm2.emission = Color(1, 0.1, 0.1)
+	rm2.emission_energy_multiplier = 4.0
+	red.material_override = rm2
+	red.position = Vector3(0, 1.2, 7.5)
+	heli.add_child(red)
+	var snd := AudioStreamPlayer3D.new()
+	snd.stream = AudioGen.get_sfx("ambient")
+	snd.pitch_scale = 1.6
+	snd.volume_db = 10.0
+	snd.unit_size = 30.0
+	snd.max_distance = 200.0
+	heli.add_child(snd)
+	world.add_child(heli)
+	heli.position = Vector3(-10, 24, 70)
+	snd.play()
+	var tw := heli.create_tween()
+	tw.tween_property(heli, "position", Vector3(6, 22, -75), 9.0)
+	tw.tween_callback(heli.queue_free)
+	var spin := heli.create_tween().set_loops()
+	spin.tween_property(rotor, "rotation:y", TAU, 0.12).as_relative()
+	player.shake(0.3)
+
+
+# ---------------------------------------------------------------- CI self-test helpers
+
+func _smoke_player_test() -> void:
+	player.toggle_crouch()
+	player.toggle_crouch()
+	for i in 3:
+		player._fire()
+		player.start_reload()
+		player.swap_weapon()
+
+
+# ---------------------------------------------------------------- end states
 
 func _on_player_died() -> void:
 	state = "dead"
@@ -292,29 +578,41 @@ func _on_player_died() -> void:
 	else:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	hud.set_hud_visible(false)
+	hud.hide_progress()
+	hud.set_timer("")
 	hud.clear_subtitle()
+	_clear_marker()
 	await hud.fade_to(0.7, 1.0)
-	hud.show_end("K.I.A.", "Specter is down.\nHostiles neutralised: %d" % kills, Color(1.0, 0.3, 0.25), "RETRY MISSION")
+	hud.show_end("K.I.A.", "%s\nHostiles neutralised: %d" % [_death_text, kills], Color(1.0, 0.3, 0.25),
+		"RETRY FROM CHECKPOINT" if GameState.checkpoint_beat > 0 else "RETRY MISSION")
 
 
 func _finale() -> void:
-	var L: Dictionary = LEVELS[GameState.level - 1]
+	state = "finale"
 	player.frozen = true
 	if touch != null:
 		touch.fire_held = false
 		touch.aim_held = false
 		touch.move_vec = Vector2.ZERO
 	hud.set_hud_visible(false)
+	hud.set_timer("")
+	hud.set_distance("")
+	_show_dist = false
+	_clear_marker()
 	await hud.fade_to(1.0, 1.5)
 	await get_tree().create_timer(0.8).timeout
-	for l in L["outro"]:
-		await _line(l[0], l[1], l[2])
+	for l in _mission["outro"]:
+		await hud.say(l[0], l[1], l[2])
 	hud.clear_subtitle()
 	if touch != null:
 		touch.set_process_input(false)
 	else:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	state = "done"
-	var last: bool = GameState.level >= LEVELS.size()
-	hud.show_end(L["end_title"], "%s\nHostiles neutralised: %d" % [L["end_text"], kills],
+	if _smoke:
+		print("SMOKE_OK level ", GameState.level)
+		get_tree().quit()
+		return
+	var last: bool = GameState.level >= Missions.COUNT
+	hud.show_end(_mission["end_title"], "%s\nHostiles neutralised: %d" % [_mission["end_text"], kills],
 		Color(1.0, 0.65, 0.25), "PLAY AGAIN" if last else "NEXT MISSION")

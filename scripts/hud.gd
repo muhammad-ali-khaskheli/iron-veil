@@ -13,6 +13,12 @@ var _ammo_label: Label
 var _weapon_label: Label
 var _objective: Label
 var _enemy_label: Label
+var _dist_label: Label
+var _cover_label: Label
+var _timer_label: Label
+var _prog_box: VBoxContainer
+var _prog_label: Label
+var _prog_bar: ProgressBar
 var _subtitle_box: PanelContainer
 var _subtitle_speaker: Label
 var _subtitle_text: Label
@@ -129,7 +135,53 @@ func _build_status() -> void:
 	obj_box.add_child(_objective)
 	_enemy_label = _label("", 18, Color(1.0, 0.5, 0.45))
 	obj_box.add_child(_enemy_label)
+	_dist_label = _label("", 18, Color(0.6, 0.9, 1.0))
+	obj_box.add_child(_dist_label)
 	_hud_nodes.append(obj_box)
+
+	# Big countdown, top centre
+	_timer_label = _label("", 54, Color(1.0, 0.35, 0.25))
+	_timer_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_timer_label.offset_top = 14.0
+	_timer_label.offset_left = -150.0
+	_timer_label.offset_right = 150.0
+	_timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_root.add_child(_timer_label)
+
+	# Hold-to-complete progress bar, upper centre
+	_prog_box = VBoxContainer.new()
+	_prog_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
+	_prog_box.offset_top = 90.0
+	_prog_box.offset_left = -180.0
+	_prog_box.offset_right = 180.0
+	_prog_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_prog_label = _label("", 22, Color(1.0, 0.8, 0.3))
+	_prog_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_prog_box.add_child(_prog_label)
+	_prog_bar = ProgressBar.new()
+	_prog_bar.custom_minimum_size = Vector2(360, 16)
+	_prog_bar.max_value = 1.0
+	_prog_bar.show_percentage = false
+	_prog_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pf := StyleBoxFlat.new()
+	pf.bg_color = Color(1.0, 0.7, 0.2)
+	var pb := StyleBoxFlat.new()
+	pb.bg_color = Color(0, 0, 0, 0.55)
+	_prog_bar.add_theme_stylebox_override("fill", pf)
+	_prog_bar.add_theme_stylebox_override("background", pb)
+	_prog_box.add_child(_prog_bar)
+	_prog_box.visible = false
+	_root.add_child(_prog_box)
+
+	# Cover indicator
+	_cover_label = _label("IN COVER - hold FIRE or AIM to pop up", 20, Color(0.5, 1.0, 0.7))
+	_cover_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	_cover_label.offset_top = -330.0
+	_cover_label.offset_left = -300.0
+	_cover_label.offset_right = 300.0
+	_cover_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_cover_label.visible = false
+	_root.add_child(_cover_label)
 
 	# Hit marker
 	_hit_marker = Control.new()
@@ -305,6 +357,28 @@ func set_ammo(mag: int, reserve: int, weapon_name: String, reloading: bool) -> v
 
 func set_objective(text: String) -> void:
 	_objective.text = text
+
+
+func set_distance(text: String) -> void:
+	_dist_label.text = text
+
+
+func set_timer(text: String) -> void:
+	_timer_label.text = text
+
+
+func set_cover(active: bool) -> void:
+	_cover_label.visible = active
+
+
+func show_progress(label: String, frac: float) -> void:
+	_prog_box.visible = true
+	_prog_label.text = label
+	_prog_bar.value = clampf(frac, 0.0, 1.0)
+
+
+func hide_progress() -> void:
+	_prog_box.visible = false
 
 
 func set_enemies_left(n: int) -> void:

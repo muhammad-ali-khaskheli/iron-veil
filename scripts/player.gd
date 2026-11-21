@@ -7,6 +7,8 @@ signal ammo_changed(mag: int, reserve: int, weapon_name: String, reloading: bool
 signal hit_marker(kill: bool, head: bool)
 signal damaged
 signal died
+signal fired
+signal cover_changed(active: bool)
 
 const WALK_SPEED := 5.2
 const SPRINT_MULT := 1.0
@@ -30,6 +32,14 @@ var _bob: float = 0.0
 var _recoil_back: float = 0.0
 var _ads: float = 0.0
 var _flash_time: float = 0.0
+var crouched: bool = false
+var in_cover: bool = false
+var god: bool = false   # used by the automated CI self-test
+var _peeking: bool = false
+var _cam_y: float = 1.6
+var _shake: float = 0.0
+var _cs: CollisionShape3D
+var _cap: CapsuleShape3D
 
 var _camera: Camera3D
 var _view: Node3D
@@ -50,7 +60,7 @@ var weapons: Array[Dictionary] = [
 	 "model": "res://assets/weapons/q-guns50-shotgun-1.glb", "ms": 0.163, "mpos": Vector3(0, 0.032, -0.11), "muzzle": Vector3(0, 0.06, -0.78)},
 	{"name": "P9", "sfx": "pistol", "dmg": 34.0, "rate": 0.2, "mag_size": 12, "mag": 12, "reserve": 72,
 	 "spread": 0.007, "recoil": 0.02, "pellets": 1, "reload": 1.3, "len": 0.3, "col": Color(0.1, 0.1, 0.11),
-	 "model": "res://assets/weapons/q-guns50-pistol-1.glb", "ms": 0.155, "mpos": Vector3(0, -0.017, 0.067), "muzzle": Vector3(0, 0.08, -0.2)},
+	 "suppressed": true, "model": "res://assets/weapons/q-guns50-pistol-1.glb", "ms": 0.155, "mpos": Vector3(0, -0.017, 0.067), "muzzle": Vector3(0, 0.08, -0.2)},
 ]
 
 
@@ -64,6 +74,8 @@ func _ready() -> void:
 	cs.shape = cap
 	cs.position.y = 0.9
 	add_child(cs)
+	_cs = cs
+	_cap = cap
 
 	_camera = Camera3D.new()
 	_camera.position.y = 1.6
@@ -211,6 +223,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			start_reload()
 		elif k.physical_keycode == KEY_Q:
 			swap_weapon()
+		elif k.physical_keycode == KEY_C:
+			toggle_crouch()
 		elif k.physical_keycode == KEY_ESCAPE:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event is InputEventMouseButton and event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
@@ -223,6 +237,7 @@ func connect_touch(t: TouchUI) -> void:
 	t.jump_pressed.connect(_try_jump)
 	t.reload_pressed.connect(start_reload)
 	t.swap_pressed.connect(swap_weapon)
+	t.crouch_pressed.connect(toggle_crouch)
 
 
 func _wants_fire() -> bool:
@@ -269,6 +284,21 @@ func _process(delta: float) -> void:
 	_kick = lerpf(_kick, 0.0, 1.0 - exp(-9.0 * delta))
 	_camera.rotation.x = clampf(_pitch + _kick, -1.5, 1.5)
 
+	# Crouch height, peeking over cover, and camera shake.
+	_peeking = crouched and in_cover and (_wants_fire() or _wants_aim()) and not frozen
+	var target_y: float = 1.6
+	if crouched:
+		target_y = 1.4 if _peeking else 1.0
+	_cam_y = lerpf(_cam_y, target_y, 1.0 - exp(-12.0 * delta))
+	_camera.position.y = _cam_y
+	if _shake > 0.001:
+		_camera.h_offset = randf_range(-1.0, 1.0) * _shake * 0.25
+		_camera.v_offset = randf_range(-1.0, 1.0) * _shake * 0.25
+		_shake = maxf(_shake - delta * 1.6, 0.0)
+	else:
+		_camera.h_offset = 0.0
+		_camera.v_offset = 0.0
+
 	var aiming: bool = _wants_aim() and not frozen and not _reloading
 	_ads = move_toward(_ads, 1.0 if aiming else 0.0, delta * 8.0)
 	_camera.fov = lerpf(75.0, 55.0, _ads)
@@ -305,10 +335,12 @@ func _physics_process(delta: float) -> void:
 	if not frozen and ui == null and Input.is_physical_key_pressed(KEY_SPACE):
 		_try_jump()
 	var dir: Vector3 = (transform.basis * Vector3(input.x, 0, input.y))
-	var spd: float = WALK_SPEED * (0.6 if _ads > 0.5 else 1.0)
+	var spd: float = WALK_SPEED * (0.6 if _ads > 0.5 else 1.0) * (0.55 if crouched else 1.0)
 	velocity.x = move_toward(velocity.x, dir.x * spd, 40.0 * delta)
 	velocity.z = move_toward(velocity.z, dir.z * spd, 40.0 * delta)
 	move_and_slide()
+
+	_update_cover()
 
 	_regen_delay -= delta
 	if _regen_delay <= 0.0 and hp < MAX_HP:
@@ -387,7 +419,9 @@ func _fire() -> void:
 	_fire_timer = w["rate"]
 	_emit_ammo()
 
+	fired.emit()
 	_audio.stream = AudioGen.get_sfx(w["sfx"])
+	_audio.volume_db = -16.0 if w.get("suppressed", false) else -4.0
 	_audio.pitch_scale = randf_range(0.95, 1.05)
 	_audio.play()
 
@@ -414,11 +448,12 @@ func _fire() -> void:
 				var e := col as Enemy
 				var dmg: float = w["dmg"]
 				var was_head: bool = e.take_damage(dmg, r.position)
+				Fx.blood(get_parent(), r.position)
 				head = head or was_head
 				if e.dead:
 					killed = true
 			else:
-				_spark(r.position, Color(1.0, 0.8, 0.5))
+				Fx.dust(get_parent(), r.position, r.normal)
 		if i < 3:
 			_tracer(end)
 	if hit_any:
@@ -478,14 +513,55 @@ func _tracer(to: Vector3) -> void:
 	get_tree().create_timer(0.04).timeout.connect(mi.queue_free)
 
 
+# ---------------------------------------------------------------- crouch / cover
+
+func toggle_crouch() -> void:
+	if not alive or frozen:
+		return
+	crouched = not crouched
+	if _cap != null:
+		_cap.height = 1.3 if crouched else 1.8
+		_cs.position.y = 0.65 if crouched else 0.9
+
+
+func eye_position() -> Vector3:
+	return _camera.global_position
+
+
+## Where enemies aim: low while ducked behind cover, higher when popping up to shoot.
+func los_target() -> Vector3:
+	var y: float = 1.4
+	if crouched:
+		y = 1.2 if _peeking else 0.85
+	return global_position + Vector3(0, y, 0)
+
+
+func shake(amount: float) -> void:
+	_shake = maxf(_shake, amount)
+
+
+func _update_cover() -> void:
+	var was: bool = in_cover
+	in_cover = false
+	if crouched:
+		var fwd: Vector3 = -global_transform.basis.z
+		var q := PhysicsRayQueryParameters3D.create(global_position + Vector3(0, 0.6, 0), global_position + Vector3(0, 0.6, 0) + fwd * 1.5, 1)
+		q.exclude = [get_rid()]
+		var r := get_world_3d().direct_space_state.intersect_ray(q)
+		in_cover = not r.is_empty()
+	if in_cover != was:
+		cover_changed.emit(in_cover)
+
+
 # ---------------------------------------------------------------- damage
 
 func take_damage(amount: float) -> void:
-	if not alive:
+	if not alive or god:
 		return
 	hp -= amount
 	_regen_delay = 3.0
 	_hurt_audio.play()
+	shake(0.35)
 	damaged.emit()
 	health_changed.emit(maxf(hp, 0.0))
 	if hp <= 0.0:

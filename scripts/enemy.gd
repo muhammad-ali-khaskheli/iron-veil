@@ -24,6 +24,11 @@ var _flash_time: float = 0.0
 var _audio: AudioStreamPlayer3D
 var _body_mat: StandardMaterial3D
 var _flash_hurt: float = 0.0
+var unaware: bool = false
+var hold_post: bool = false
+var patrol: Array[Vector3] = []
+var _patrol_i: int = 0
+signal alerted(enemy: Enemy)
 
 
 func _ready() -> void:
@@ -133,6 +138,11 @@ func _physics_process(delta: float) -> void:
 	else:
 		velocity.y = 0.0
 
+	if unaware:
+		_patrol_step(delta)
+		move_and_slide()
+		return
+
 	var to_player: Vector3 = player.global_position - global_position
 	var flat: Vector3 = Vector3(to_player.x, 0, to_player.z)
 	var dist: float = flat.length()
@@ -172,6 +182,8 @@ func _physics_process(delta: float) -> void:
 				strafe_timer = 1.2
 				strafe_dir = -strafe_dir
 
+	if hold_post:
+		move = Vector3.ZERO
 	if move.length() > 1.0:
 		move = move.normalized()
 	velocity.x = move.x * move_speed
@@ -179,10 +191,41 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 
+func _patrol_step(delta: float) -> void:
+	var speed: float = 1.6
+	var target: Vector3 = global_position
+	if patrol.size() > 0:
+		target = patrol[_patrol_i]
+	var flat: Vector3 = Vector3(target.x - global_position.x, 0, target.z - global_position.z)
+	if flat.length() < 0.8:
+		if patrol.size() > 0:
+			_patrol_i = (_patrol_i + 1) % patrol.size()
+		velocity.x = 0.0
+		velocity.z = 0.0
+	else:
+		var d: Vector3 = flat.normalized()
+		velocity.x = d.x * speed
+		velocity.z = d.z * speed
+		rotation.y = lerp_angle(rotation.y, atan2(-d.x, -d.z), 6.0 * delta)
+	# Spot the player: closer when they are crouching.
+	var dist: float = global_position.distance_to(player.global_position)
+	var spot: float = 6.0 if player.crouched else 11.0
+	if dist < spot and _has_los():
+		alert()
+
+
+func alert() -> void:
+	if not unaware or dead:
+		return
+	unaware = false
+	react_timer = 0.9
+	alerted.emit(self)
+
+
 func _has_los() -> bool:
 	var space := get_world_3d().direct_space_state
 	var from: Vector3 = global_position + Vector3(0, 1.6, 0)
-	var to: Vector3 = player.global_position + Vector3(0, 1.0, 0)
+	var to: Vector3 = player.los_target()
 	var q := PhysicsRayQueryParameters3D.create(from, to, 1 | 2)
 	q.exclude = [get_rid()]
 	var r := space.intersect_ray(q)
@@ -207,6 +250,12 @@ func take_damage(amount: float, hit_point: Vector3 = Vector3.ZERO) -> bool:
 	var headshot: bool = hit_point != Vector3.ZERO and hit_point.y > global_position.y + 1.55 * scale.y
 	if headshot:
 		amount *= 2.5
+	if unaware:
+		amount *= 3.0   # silent takedown from behind cover
+		if health - amount <= 0.0:
+			unaware = false   # died before raising the alarm
+		else:
+			alert()
 	health -= amount
 	_body_mat.albedo_color = Color(0.6, 0.15, 0.1)
 	_flash_hurt = 0.08

@@ -3,7 +3,7 @@ class_name GameWorld
 ## Builds a mission map procedurally. level 1 = night compound, 2 = dawn port, 3 = snow outpost.
 
 var level: int = 1
-var player_start := Vector3(0, 1.2, 40)
+var player_start := Vector3(0, 1.2, 51)
 var extract_pos := Vector3(0, 0, -46)
 var has_extract: bool = true
 ## One array of spawn points per combat wave.
@@ -13,6 +13,8 @@ var _ground_tex: NoiseTexture2D
 var _ground_normal: NoiseTexture2D
 var _theme: Dictionary = {}
 
+const ENV := "res://assets/env/"
+
 
 func build(lvl: int = 1) -> void:
 	level = lvl
@@ -21,6 +23,7 @@ func build(lvl: int = 1) -> void:
 	_make_textures()
 	_make_ground()
 	_make_perimeter()
+	_make_gate()
 	match level:
 		2:
 			_make_containers()
@@ -31,6 +34,8 @@ func build(lvl: int = 1) -> void:
 		_:
 			_make_buildings()
 	_make_cover()
+	_make_vehicles()
+	_make_industrial()
 	if level != 3:
 		_make_lamps()
 	has_extract = level != 3
@@ -211,25 +216,9 @@ func _make_cover() -> void:
 	for p in crate_spots:
 		_box(p, Vector3(1.5, 1.5, 1.5), crate)
 		_box(p + Vector3(1.6, -0.25, 0.3), Vector3(1.0, 1.0, 1.0), crate)
-	var barrel_spots := [Vector3(-14, 0.6, 24), Vector3(14, 0.6, 5), Vector3(-15, 0.6, -12), Vector3(15, 0.6, -28)]
+	var barrel_spots := [Vector3(-14, 0, 24), Vector3(14, 0, 5), Vector3(-15, 0, -12), Vector3(15, 0, -28), Vector3(-13.2, 0, 24.8), Vector3(14.8, 0, 5.6)]
 	for p in barrel_spots:
-		var body := StaticBody3D.new()
-		body.position = p
-		var mi := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.45
-		cm.bottom_radius = 0.45
-		cm.height = 1.2
-		mi.mesh = cm
-		mi.material_override = metal
-		body.add_child(mi)
-		var cs := CollisionShape3D.new()
-		var sh := CylinderShape3D.new()
-		sh.radius = 0.45
-		sh.height = 1.2
-		cs.shape = sh
-		body.add_child(cs)
-		add_child(body)
+		Props.place(self, ENV + "k-survival-barrel.glb", p, randf_range(0, 360), 3.5, Vector3(0.85, 1.2, 0.85), Color(0.2, 0.22, 0.25))
 	var barrier_spots := [
 		[Vector3(-4, 0.55, 20), 3.0], [Vector3(4, 0.55, 20), 3.0],
 		[Vector3(-4, 0.55, -10), 3.0], [Vector3(4, 0.55, -10), 3.0],
@@ -323,25 +312,24 @@ func _building_set(specs: Array, concrete: Material) -> void:
 # ---------------------------------------------------------------- level 2: port
 
 func _make_containers() -> void:
-	var colors := [
-		Color(0.7, 0.18, 0.15), Color(0.15, 0.35, 0.6), Color(0.2, 0.5, 0.3),
-		Color(0.85, 0.55, 0.12), Color(0.5, 0.5, 0.55), Color(0.45, 0.2, 0.5),
-	]
+	var variants := ["k-watercraft-cargo-container-a.glb", "k-watercraft-cargo-container-b.glb", "k-watercraft-cargo-container-c.glb"]
+	var fb := [Color(0.7, 0.18, 0.15), Color(0.15, 0.35, 0.6), Color(0.2, 0.5, 0.3), Color(0.85, 0.55, 0.12)]
 	var idx: int = 0
 	for z in [30.0, 16.0, 2.0, -12.0, -26.0, -38.0]:
 		for x in [-30.0, -20.0, 20.0, 30.0]:
-			var c: Color = colors[idx % colors.size()]
-			var m := _mat(c, 0.55, 0.3)
-			_box(Vector3(x, 1.3, z), Vector3(2.6, 2.6, 6.0), m)
+			if z == 30.0:
+				idx += 1
+				continue   # the compound wall runs along z = 33
+			var v: String = variants[idx % 3]
+			Props.place(self, ENV + v, Vector3(x, 0, z), 0.0, 2.2, Vector3(2.6, 2.6, 6.0), fb[idx % fb.size()])
 			if idx % 3 == 0:
-				var m2 := _mat(colors[(idx + 2) % colors.size()], 0.55, 0.3)
-				_box(Vector3(x, 3.9, z), Vector3(2.6, 2.6, 6.0), m2)
+				Props.place(self, ENV + variants[(idx + 1) % 3], Vector3(x, 2.42, z), 0.0, 2.2, Vector3(2.6, 2.6, 6.0), fb[(idx + 2) % fb.size()])
 			idx += 1
-	# Loose containers in the open lane for cover.
-	_box(Vector3(-10, 1.3, 8), Vector3(6.0, 2.6, 2.6), _mat(colors[1], 0.55, 0.3))
-	_box(Vector3(10, 1.3, -18), Vector3(6.0, 2.6, 2.6), _mat(colors[0], 0.55, 0.3))
-	_box(Vector3(-9, 1.3, -32), Vector3(6.0, 2.6, 2.6), _mat(colors[3], 0.55, 0.3))
-	# Warehouses and a crane at the far end.
+	Props.place(self, ENV + variants[1], Vector3(-10, 0, 8), 90.0, 2.2, Vector3(6.0, 2.6, 2.6), fb[1])
+	Props.place(self, ENV + variants[0], Vector3(10, 0, -18), 90.0, 2.2, Vector3(6.0, 2.6, 2.6), fb[0])
+	Props.place(self, ENV + variants[2], Vector3(-9, 0, -32), 90.0, 2.2, Vector3(6.0, 2.6, 2.6), fb[3])
+	Props.place(self, ENV + "k-watercraft-cargo-pile-a.glb", Vector3(14, 0, 18), 20.0, 2.4, Vector3(6.0, 2.8, 6.0), fb[2])
+	Props.place(self, ENV + "k-watercraft-cargo-pile-a.glb", Vector3(-14, 0, -4), -30.0, 2.4, Vector3(6.0, 2.8, 6.0), fb[1])
 	_building_set([
 		[-28.0, 46.0, 14.0, 8.0, 7.0],
 		[28.0, 46.0, 14.0, 8.0, 7.0],
@@ -367,41 +355,66 @@ func _make_bunkers() -> void:
 func _make_trees() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
-	var trunk := _mat(Color(0.25, 0.18, 0.12), 0.9)
-	var leaf := _mat(Color(0.12, 0.3, 0.2), 0.9)
-	var snow := _mat(Color(0.95, 0.97, 1.0), 0.95)
 	for i in 46:
 		var side: float = -1.0 if rng.randf() < 0.5 else 1.0
 		var x: float = side * rng.randf_range(18.0, 46.0)
 		var z: float = rng.randf_range(-58.0, 50.0)
-		var h: float = rng.randf_range(5.0, 9.0)
-		_box(Vector3(x, 1.0, z), Vector3(0.5, 2.0, 0.5), trunk)
-		var body := Node3D.new()
-		body.position = Vector3(x, 2.0 + h / 2.0, z)
-		var cone := MeshInstance3D.new()
-		var cm := CylinderMesh.new()
-		cm.top_radius = 0.0
-		cm.bottom_radius = h * 0.32
-		cm.height = h
-		cone.mesh = cm
-		cone.material_override = leaf
-		body.add_child(cone)
-		var cap := MeshInstance3D.new()
-		var cm2 := CylinderMesh.new()
-		cm2.top_radius = 0.0
-		cm2.bottom_radius = h * 0.17
-		cm2.height = h * 0.45
-		cap.mesh = cm2
-		cap.material_override = snow
-		cap.position = Vector3(0, h * 0.28, 0)
-		body.add_child(cap)
-		add_child(body)
+		var yaw: float = rng.randf_range(0.0, 360.0)
+		if i % 2 == 0:
+			Props.place(self, ENV + "q-trees-pine-5.glb", Vector3(x, 0, z), yaw, rng.randf_range(0.6, 0.85), Vector3(0.6, 8.0, 0.6), Color(0.12, 0.3, 0.2), true, 0.12)
+		else:
+			Props.place(self, ENV + "q-nature150-pinetree-2.glb", Vector3(x, 0, z), yaw, rng.randf_range(2.2, 3.0), Vector3(0.6, 8.0, 0.6), Color(0.12, 0.3, 0.2), true, 0.2)
+	for i in 14:
+		var rx: float = rng.randf_range(-16.0, 16.0)
+		var rz: float = rng.randf_range(-50.0, 28.0)
+		if absf(rx) < 5.0:
+			continue
+		Props.place(self, ENV + "q-nature150-rock-moss-5.glb", Vector3(rx, 0, rz), rng.randf_range(0, 360), rng.randf_range(2.5, 4.0), Vector3(2.0, 1.6, 2.5), Color(0.5, 0.52, 0.55))
 
 
 func _make_tower() -> void:
 	var steel := _mat(Color(0.3, 0.32, 0.36), 0.5, 0.6)
 	_box(Vector3(0, 11, -58), Vector3(1.2, 22, 1.2), steel)
 	_box(Vector3(0, 22.3, -58), Vector3(0.6, 0.6, 0.6), _glow_mat(Color(1.0, 0.1, 0.1), 4.0), false)
+
+
+# ---------------------------------------------------------------- gate, vehicles, industrial
+
+func _make_gate() -> void:
+	## Compound wall across the map at z = 33 with a breachable gate in the middle.
+	var wall := _mat(_theme["wall"], 0.9)
+	_box(Vector3(-27.5, 2.5, 33), Vector3(45, 5, 1.2), wall)
+	_box(Vector3(27.5, 2.5, 33), Vector3(45, 5, 1.2), wall)
+	var gate_mat := _mat(Color(0.22, 0.24, 0.27), 0.45, 0.8)
+	var gate := _box(Vector3(0, 2.1, 33), Vector3(10, 4.2, 0.9), gate_mat)
+	gate.name = "Gate"
+	var lamp := _glow_mat(Color(1.0, 0.15, 0.1), 3.0)
+	_box(Vector3(-5.3, 4.6, 33), Vector3(0.4, 0.4, 0.4), lamp, false)
+	_box(Vector3(5.3, 4.6, 33), Vector3(0.4, 0.4, 0.4), lamp, false)
+
+
+func _make_vehicles() -> void:
+	var fb := Color(0.3, 0.32, 0.3)
+	var spots: Array = [
+		[Vector3(-11, 0.72, 18), 92.0, "k-car-truck.glb"],
+		[Vector3(11, 0.72, -2), 84.0, "k-car-truck-flat.glb"],
+		[Vector3(-12, 0.72, -26), 96.0, "k-car-truck.glb"],
+		[Vector3(12, 0.72, 27), 88.0, "k-car-truck-flat.glb"],
+	]
+	if level == 3:
+		spots = [[Vector3(-11, 0.72, 20), 92.0, "k-car-truck.glb"], [Vector3(11, 0.72, -14), 84.0, "k-car-truck-flat.glb"]]
+	for sp in spots:
+		Props.place(self, ENV + sp[2], sp[0], sp[1], 2.4, Vector3(3.6, 3.4, 7.0), fb)
+
+
+func _make_industrial() -> void:
+	if level == 3:
+		return
+	Props.place(self, ENV + "k-city-industrial-building-c.glb", Vector3(-40, 0, 44), 90.0, 5.0, Vector3(9, 6, 10), Color(0.4, 0.4, 0.42))
+	Props.place(self, ENV + "k-city-industrial-building-a.glb", Vector3(40, 0, 44), -90.0, 5.0, Vector3(10, 7, 6), Color(0.4, 0.4, 0.42))
+	Props.place(self, ENV + "k-city-industrial-chimney-large.glb", Vector3(-43, 0, -52), 0.0, 8.0, Vector3(8, 14, 8), Color(0.4, 0.4, 0.42))
+	Props.place(self, ENV + "k-city-industrial-chimney-large.glb", Vector3(43, 0, -54), 0.0, 9.0, Vector3(9, 15, 9), Color(0.4, 0.4, 0.42))
+	Props.place(self, ENV + "k-city-industrial-detail-tank.glb", Vector3(40, 0, -2), 0.0, 8.0, Vector3(7, 3.4, 4), Color(0.45, 0.45, 0.47))
 
 
 # ---------------------------------------------------------------- spawns

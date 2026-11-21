@@ -56,6 +56,33 @@ jobs:
       - name: Import project
         run: godot --headless --verbose --import || true
 
+      - name: Self-test (parse check + auto-play each mission)
+        continue-on-error: true
+        run: |
+          set +e
+          FAIL=0
+          for f in scripts/*.gd; do
+            out=$(godot --headless --path . --check-only --script "res://$f" 2>&1)
+            if echo "$out" | grep -qE "SCRIPT ERROR|Parse Error|Compile Error"; then
+              FAIL=1
+              echo "::warning title=Parse $f::$(echo "$out" | grep -E 'SCRIPT ERROR|Parse Error|Compile Error|at:' | head -6 | tr '\n' ' ' | cut -c1-800)"
+            fi
+          done
+          for L in 1 2 3; do
+            out=$(IV_SMOKE=1 IV_LEVEL=$L timeout 240 godot --headless --path . --fixed-fps 60 --quit-after 40000 2>&1)
+            if echo "$out" | grep -q "SMOKE_OK level $L"; then
+              echo "::notice title=Smoke level $L::PASSED"
+            else
+              FAIL=1
+              BEAT=$(echo "$out" | grep SMOKE_BEAT | tail -1)
+              echo "::warning title=Smoke level $L FAILED::last beat: $BEAT | $(echo "$out" | grep -E 'SCRIPT ERROR|Parse Error|ERROR|at:' | head -8 | tr '\n' ' ' | cut -c1-900)"
+            fi
+            if echo "$out" | grep -qE "SCRIPT ERROR"; then
+              echo "::warning title=Runtime errors L$L::$(echo "$out" | grep -E 'SCRIPT ERROR|at:' | head -10 | tr '\n' ' ' | cut -c1-900)"
+            fi
+          done
+          exit 0
+
       - name: Export APK
         run: |
           mkdir -p build

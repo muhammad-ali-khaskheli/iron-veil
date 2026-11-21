@@ -5,6 +5,7 @@ class_name TouchUI
 signal jump_pressed
 signal reload_pressed
 signal swap_pressed
+signal crouch_pressed
 
 var move_vec: Vector2 = Vector2.ZERO
 var look_delta: Vector2 = Vector2.ZERO
@@ -41,6 +42,7 @@ func _layout() -> void:
 		"JUMP": {"c": Vector2(s.x - 90, s.y - 330), "r": 50.0},
 		"RELOAD": {"c": Vector2(s.x - 300, s.y - 260), "r": 48.0},
 		"SWAP": {"c": Vector2(s.x - 440, s.y - 190), "r": 48.0},
+		"CROUCH": {"c": Vector2(s.x - 460, s.y - 70), "r": 46.0},
 	}
 
 
@@ -70,6 +72,7 @@ func _press_button(b: String, finger: int) -> void:
 		"JUMP": jump_pressed.emit()
 		"RELOAD": reload_pressed.emit()
 		"SWAP": swap_pressed.emit()
+		"CROUCH": crouch_pressed.emit()
 
 
 func _release_finger(finger: int) -> void:
