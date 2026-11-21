@@ -69,9 +69,20 @@ func _build_model() -> void:
 	helmet.height = 0.3
 	_add_raw(helmet, Vector3(0, 1.82, 0), dark)
 	# Rifle
-	var gun := BoxMesh.new()
-	gun.size = Vector3(0.08, 0.1, 0.8)
-	_add_raw(gun, Vector3(0.28, 1.2, -0.4), dark)
+	var gun_path := "res://assets/weapons/q-guns50-assaultrifle-1.glb"
+	var gun_scene: PackedScene = null
+	if ResourceLoader.exists(gun_path):
+		gun_scene = load(gun_path) as PackedScene
+	if gun_scene != null:
+		var g := gun_scene.instantiate() as Node3D
+		g.scale = Vector3(0.26, 0.26, 0.26)
+		g.rotation_degrees = Vector3(0, 90, 0)
+		g.position = Vector3(0.28, 1.15, 0.05)
+		add_child(g)
+	else:
+		var gun := BoxMesh.new()
+		gun.size = Vector3(0.08, 0.1, 0.8)
+		_add_raw(gun, Vector3(0.28, 1.2, -0.4), dark)
 	# Glowing visor strip so enemies read clearly at night.
 	var visor_mat := StandardMaterial3D.new()
 	visor_mat.albedo_color = Color(1, 0.2, 0.1)

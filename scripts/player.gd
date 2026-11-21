@@ -43,11 +43,14 @@ var _hit_audio: AudioStreamPlayer
 
 var weapons: Array[Dictionary] = [
 	{"name": "M4-X", "sfx": "rifle", "dmg": 22.0, "rate": 0.09, "mag_size": 30, "mag": 30, "reserve": 150,
-	 "spread": 0.012, "recoil": 0.010, "pellets": 1, "reload": 1.8, "len": 0.6, "col": Color(0.12, 0.13, 0.15)},
+	 "spread": 0.012, "recoil": 0.010, "pellets": 1, "reload": 1.8, "len": 0.6, "col": Color(0.12, 0.13, 0.15),
+	 "model": "res://assets/weapons/q-guns50-assaultrifle-1.glb", "ms": 0.26, "mpos": Vector3(0, -0.114, 0.071), "muzzle": Vector3(0, 0.06, -0.74)},
 	{"name": "VX-12", "sfx": "shotgun", "dmg": 14.0, "rate": 0.8, "mag_size": 6, "mag": 6, "reserve": 36,
-	 "spread": 0.065, "recoil": 0.05, "pellets": 9, "reload": 2.4, "len": 0.55, "col": Color(0.22, 0.14, 0.08)},
+	 "spread": 0.065, "recoil": 0.05, "pellets": 9, "reload": 2.4, "len": 0.55, "col": Color(0.22, 0.14, 0.08),
+	 "model": "res://assets/weapons/q-guns50-shotgun-1.glb", "ms": 0.163, "mpos": Vector3(0, 0.032, -0.11), "muzzle": Vector3(0, 0.06, -0.78)},
 	{"name": "P9", "sfx": "pistol", "dmg": 34.0, "rate": 0.2, "mag_size": 12, "mag": 12, "reserve": 72,
-	 "spread": 0.007, "recoil": 0.02, "pellets": 1, "reload": 1.3, "len": 0.3, "col": Color(0.1, 0.1, 0.11)},
+	 "spread": 0.007, "recoil": 0.02, "pellets": 1, "reload": 1.3, "len": 0.3, "col": Color(0.1, 0.1, 0.11),
+	 "model": "res://assets/weapons/q-guns50-pistol-1.glb", "ms": 0.155, "mpos": Vector3(0, -0.017, 0.067), "muzzle": Vector3(0, 0.08, -0.2)},
 ]
 
 
@@ -119,6 +122,8 @@ func _build_viewmodel() -> void:
 		if c != _muzzle:
 			c.queue_free()
 	var w: Dictionary = weapons[_weapon_index]
+	if _try_model_viewmodel(w):
+		return
 	var metal := StandardMaterial3D.new()
 	metal.albedo_color = w["col"]
 	metal.metallic = 0.7
@@ -144,6 +149,39 @@ func _build_viewmodel() -> void:
 	_add_vm_box(Vector3(0.0, -0.14, -wlen * 0.55), Vector3(0.09, 0.09, 0.14), glove)
 	_muzzle.position = Vector3(0, 0.015, -wlen - 0.28)
 	_view.position = Vector3(0.22, -0.2, -0.45)
+
+
+## Uses the real gun model when it loads; returns false so the box gun is used as a fallback.
+func _try_model_viewmodel(w: Dictionary) -> bool:
+	var path: String = w.get("model", "")
+	if path == "" or not ResourceLoader.exists(path):
+		return false
+	var scene := load(path) as PackedScene
+	if scene == null:
+		return false
+	var gun := scene.instantiate() as Node3D
+	if gun == null:
+		return false
+	var ms: float = w["ms"]
+	gun.scale = Vector3(ms, ms, ms)
+	gun.rotation_degrees = Vector3(0, 90, 0)   # model barrel points +X; we need -Z
+	gun.position = w["mpos"]
+	_no_shadow(gun)
+	_view.add_child(gun)
+	var glove := StandardMaterial3D.new()
+	glove.albedo_color = Color(0.12, 0.14, 0.1)
+	var wlen: float = w["len"]
+	_add_vm_box(Vector3(0.0, -0.1, -wlen * 0.5), Vector3(0.08, 0.07, 0.14), glove)
+	_muzzle.position = w["muzzle"]
+	_view.position = Vector3(0.22, -0.2, -0.45)
+	return true
+
+
+func _no_shadow(n: Node) -> void:
+	if n is GeometryInstance3D:
+		(n as GeometryInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	for c in n.get_children():
+		_no_shadow(c)
 
 
 func _add_vm_box(pos: Vector3, size: Vector3, mat: Material) -> void:
