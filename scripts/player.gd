@@ -274,7 +274,7 @@ func _physics_process(delta: float) -> void:
 
 	_regen_delay -= delta
 	if _regen_delay <= 0.0 and hp < MAX_HP:
-		hp = minf(hp + 14.0 * delta, MAX_HP)
+		hp = minf(hp + 22.0 * delta, MAX_HP)
 		health_changed.emit(hp)
 
 	_fire_timer = maxf(_fire_timer - delta, 0.0)
@@ -446,7 +446,7 @@ func take_damage(amount: float) -> void:
 	if not alive:
 		return
 	hp -= amount
-	_regen_delay = 4.5
+	_regen_delay = 3.0
 	_hurt_audio.play()
 	damaged.emit()
 	health_changed.emit(maxf(hp, 0.0))

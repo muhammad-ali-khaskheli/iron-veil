@@ -7,15 +7,17 @@ signal died(enemy: Enemy)
 const GRAVITY := 24.0
 
 var player: Node3D
-var health: float = 60.0
-var move_speed: float = 3.6
+var health: float = 40.0
+var move_speed: float = 2.6
 var fire_cooldown: float = 0.0
 var strafe_dir: float = 1.0
 var strafe_timer: float = 0.0
 var prefer_range: float = 14.0
 var dead: bool = false
-var react_timer: float = 0.8
-var aggression: float = 1.0
+var react_timer: float = 1.8
+var aggression: float = 0.7
+var damage_mult: float = 1.0
+var accuracy_mult: float = 1.0
 
 var _flash: OmniLight3D
 var _flash_time: float = 0.0
@@ -27,7 +29,8 @@ var _flash_hurt: float = 0.0
 func _ready() -> void:
 	collision_layer = 4
 	collision_mask = 1 | 4
-	prefer_range = randf_range(10.0, 18.0)
+	prefer_range = randf_range(14.0, 22.0)
+	react_timer = randf_range(1.5, 2.5)
 	strafe_dir = 1.0 if randf() > 0.5 else -1.0
 	_build_model()
 	_audio = AudioStreamPlayer3D.new()
@@ -135,16 +138,16 @@ func _physics_process(delta: float) -> void:
 	strafe_timer -= delta
 
 	var move: Vector3 = Vector3.ZERO
-	if see and dist < 38.0:
+	if see and dist < 30.0:
 		if dist > prefer_range + 3.0:
 			move = dir
 		elif dist < prefer_range - 4.0:
 			move = -dir * 0.7
 		if strafe_timer <= 0.0:
-			strafe_timer = randf_range(1.0, 2.5)
+			strafe_timer = randf_range(1.5, 3.5)
 			strafe_dir = -strafe_dir
 		var side: Vector3 = Vector3(-dir.z, 0, dir.x) * strafe_dir
-		move += side * 0.8
+		move += side * 0.4
 		if react_timer <= 0.0 and fire_cooldown <= 0.0:
 			_shoot(dist)
 	else:
@@ -176,21 +179,21 @@ func _has_los() -> bool:
 
 
 func _shoot(dist: float) -> void:
-	fire_cooldown = randf_range(0.45, 0.9) / aggression
+	fire_cooldown = randf_range(1.0, 1.9) / aggression
 	_flash.light_energy = 4.0
 	_flash_time = 0.06
 	_audio.pitch_scale = randf_range(0.9, 1.1)
 	_audio.play()
-	var chance: float = clampf(0.55 - dist * 0.012, 0.12, 0.5)
+	var chance: float = clampf(0.38 - dist * 0.012, 0.06, 0.3) * accuracy_mult
 	if randf() < chance:
 		if player.has_method("take_damage"):
-			player.take_damage(randf_range(6.0, 11.0))
+			player.take_damage(randf_range(4.0, 8.0) * damage_mult)
 
 
 func take_damage(amount: float, hit_point: Vector3 = Vector3.ZERO) -> bool:
 	if dead:
 		return false
-	var headshot: bool = hit_point != Vector3.ZERO and hit_point.y > global_position.y + 1.55
+	var headshot: bool = hit_point != Vector3.ZERO and hit_point.y > global_position.y + 1.55 * scale.y
 	if headshot:
 		amount *= 2.5
 	health -= amount

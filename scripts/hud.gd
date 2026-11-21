@@ -2,8 +2,9 @@ extends CanvasLayer
 class_name Hud
 ## All 2D UI: health, ammo, crosshair, hit marker, objectives, subtitles, banners, menus.
 
-signal start_pressed
+signal start_pressed(level: int)
 signal retry_pressed
+signal menu_pressed
 
 var _root: Control
 var _health_bar: ProgressBar
@@ -27,6 +28,7 @@ var _menu: Control
 var _end: Control
 var _end_title: Label
 var _end_text: Label
+var _end_button: Button
 var _sub_token: int = 0
 var _banner_token: int = 0
 var _hud_nodes: Array[Control] = []
@@ -190,7 +192,7 @@ func _build_menu() -> void:
 	var v := VBoxContainer.new()
 	v.set_anchors_preset(Control.PRESET_FULL_RECT)
 	v.alignment = BoxContainer.ALIGNMENT_CENTER
-	v.add_theme_constant_override("separation", 18)
+	v.add_theme_constant_override("separation", 14)
 	_menu.add_child(v)
 	var t := _label("IRON VEIL", 96, Color(1, 1, 1))
 	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -198,9 +200,14 @@ func _build_menu() -> void:
 	var s := _label("OPERATION: NIGHT BREACH", 28, Color(1.0, 0.65, 0.25))
 	s.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(s)
-	var b := _make_button("DEPLOY")
-	b.pressed.connect(func(): start_pressed.emit())
-	v.add_child(b)
+	var names := ["MISSION 1: NIGHT BREACH", "MISSION 2: PORT SARNAK", "MISSION 3: FROZEN RELAY"]
+	for i in names.size():
+		var b := _make_button(names[i])
+		b.custom_minimum_size = Vector2(520, 70)
+		b.add_theme_font_size_override("font_size", 28)
+		var lvl: int = i + 1
+		b.pressed.connect(func(): start_pressed.emit(lvl))
+		v.add_child(b)
 	_root.add_child(_menu)
 
 
@@ -220,9 +227,13 @@ func _build_end() -> void:
 	_end_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_end_text.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(_end_text)
-	var b := _make_button("PLAY AGAIN")
-	b.pressed.connect(func(): retry_pressed.emit())
-	v.add_child(b)
+	_end_button = _make_button("PLAY AGAIN")
+	_end_button.pressed.connect(func(): retry_pressed.emit())
+	v.add_child(_end_button)
+	var menu_btn := _make_button("MAIN MENU")
+	menu_btn.custom_minimum_size = Vector2(320, 64)
+	menu_btn.pressed.connect(func(): menu_pressed.emit())
+	v.add_child(menu_btn)
 	_end.visible = false
 	_root.add_child(_end)
 
@@ -350,7 +361,8 @@ func show_menu(v: bool) -> void:
 	_menu.visible = v
 
 
-func show_end(title: String, text: String, title_color: Color = Color.WHITE) -> void:
+func show_end(title: String, text: String, title_color: Color = Color.WHITE, button_text: String = "PLAY AGAIN") -> void:
+	_end_button.text = button_text
 	_end_title.text = title
 	_end_title.add_theme_color_override("font_color", title_color)
 	_end_text.text = text

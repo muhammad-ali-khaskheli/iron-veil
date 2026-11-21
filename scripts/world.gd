@@ -1,26 +1,73 @@
 extends Node3D
 class_name GameWorld
-## Builds the night compound procedurally: ground, walls, buildings, cover, lights, fog.
+## Builds a mission map procedurally. level 1 = night compound, 2 = dawn port, 3 = snow outpost.
 
+var level: int = 1
 var player_start := Vector3(0, 1.2, 40)
 var extract_pos := Vector3(0, 0, -46)
-var wave1_spawns: Array[Vector3] = []
-var wave2_spawns: Array[Vector3] = []
+var has_extract: bool = true
+## One array of spawn points per combat wave.
+var waves: Array = []
 
 var _ground_tex: NoiseTexture2D
 var _ground_normal: NoiseTexture2D
+var _theme: Dictionary = {}
 
 
-func build() -> void:
+func build(lvl: int = 1) -> void:
+	level = lvl
+	_theme = _get_theme()
 	_make_environment()
 	_make_textures()
 	_make_ground()
 	_make_perimeter()
-	_make_buildings()
+	match level:
+		2:
+			_make_containers()
+		3:
+			_make_bunkers()
+			_make_trees()
+			_make_tower()
+		_:
+			_make_buildings()
 	_make_cover()
-	_make_lamps()
-	_make_extraction()
+	if level != 3:
+		_make_lamps()
+	has_extract = level != 3
+	if has_extract:
+		_make_extraction()
 	_make_spawns()
+
+
+func _get_theme() -> Dictionary:
+	match level:
+		2:
+			return {
+				"sky_top": Color(0.25, 0.35, 0.6), "sky_horizon": Color(1.0, 0.62, 0.38),
+				"sky_ground": Color(0.5, 0.4, 0.35), "ambient": 0.9, "ambient_color": Color(0.65, 0.55, 0.5),
+				"sun_color": Color(1.0, 0.72, 0.48), "sun_energy": 1.7, "sun_rot": Vector3(-20, -60, 0),
+				"fog_color": Color(0.75, 0.52, 0.42), "fog_density": 0.006, "exposure": 1.1,
+				"ground": Color(0.3, 0.31, 0.34), "wall": Color(0.38, 0.36, 0.33),
+				"crate": Color(0.4, 0.3, 0.18), "road": Color(0.14, 0.14, 0.16),
+			}
+		3:
+			return {
+				"sky_top": Color(0.45, 0.6, 0.82), "sky_horizon": Color(0.82, 0.88, 0.96),
+				"sky_ground": Color(0.7, 0.75, 0.82), "ambient": 0.9, "ambient_color": Color(0.75, 0.8, 0.9),
+				"sun_color": Color(0.95, 0.97, 1.0), "sun_energy": 1.3, "sun_rot": Vector3(-55, 20, 0),
+				"fog_color": Color(0.8, 0.85, 0.92), "fog_density": 0.011, "exposure": 1.0,
+				"ground": Color(0.88, 0.91, 0.95), "wall": Color(0.5, 0.53, 0.58),
+				"crate": Color(0.3, 0.33, 0.25), "road": Color(0.6, 0.64, 0.7),
+			}
+		_:
+			return {
+				"sky_top": Color(0.04, 0.08, 0.18), "sky_horizon": Color(0.2, 0.27, 0.42),
+				"sky_ground": Color(0.1, 0.12, 0.18), "ambient": 1.2, "ambient_color": Color(0.38, 0.44, 0.6),
+				"sun_color": Color(0.62, 0.72, 1.0), "sun_energy": 1.15, "sun_rot": Vector3(-45, 35, 0),
+				"fog_color": Color(0.17, 0.21, 0.3), "fog_density": 0.006, "exposure": 1.4,
+				"ground": Color(0.3, 0.32, 0.27), "wall": Color(0.32, 0.33, 0.36),
+				"crate": Color(0.36, 0.27, 0.16), "road": Color(0.12, 0.12, 0.14),
+			}
 
 
 # ---------------------------------------------------------------- environment
@@ -28,39 +75,40 @@ func build() -> void:
 func _make_environment() -> void:
 	var env := Environment.new()
 	var sky_mat := ProceduralSkyMaterial.new()
-	sky_mat.sky_top_color = Color(0.01, 0.02, 0.06)
-	sky_mat.sky_horizon_color = Color(0.06, 0.08, 0.13)
-	sky_mat.ground_horizon_color = Color(0.04, 0.05, 0.08)
-	sky_mat.ground_bottom_color = Color(0.01, 0.01, 0.02)
+	sky_mat.sky_top_color = _theme["sky_top"]
+	sky_mat.sky_horizon_color = _theme["sky_horizon"]
+	sky_mat.ground_horizon_color = _theme["sky_horizon"]
+	sky_mat.ground_bottom_color = _theme["sky_ground"]
 	var sky := Sky.new()
 	sky.sky_material = sky_mat
 	env.background_mode = Environment.BG_SKY
 	env.sky = sky
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.9
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = _theme["ambient_color"]
+	env.ambient_light_energy = _theme["ambient"]
 	env.tonemap_mode = Environment.TONE_MAPPER_ACES
-	env.tonemap_exposure = 1.1
+	env.tonemap_exposure = _theme["exposure"]
 	env.glow_enabled = true
-	env.glow_intensity = 0.8
-	env.glow_bloom = 0.1
-	env.glow_hdr_threshold = 1.0
+	env.glow_intensity = 0.7
+	env.glow_bloom = 0.08
+	env.glow_hdr_threshold = 1.1
 	env.fog_enabled = true
-	env.fog_light_color = Color(0.07, 0.09, 0.14)
-	env.fog_density = 0.012
+	env.fog_light_color = _theme["fog_color"]
+	env.fog_density = _theme["fog_density"]
 	env.adjustment_enabled = true
-	env.adjustment_contrast = 1.12
-	env.adjustment_saturation = 1.1
+	env.adjustment_contrast = 1.08
+	env.adjustment_saturation = 1.12
 	var we := WorldEnvironment.new()
 	we.environment = env
 	add_child(we)
 
-	var moon := DirectionalLight3D.new()
-	moon.light_color = Color(0.55, 0.65, 1.0)
-	moon.light_energy = 0.55
-	moon.shadow_enabled = true
-	moon.directional_shadow_max_distance = 60.0
-	moon.rotation_degrees = Vector3(-50, 35, 0)
-	add_child(moon)
+	var sun := DirectionalLight3D.new()
+	sun.light_color = _theme["sun_color"]
+	sun.light_energy = _theme["sun_energy"]
+	sun.shadow_enabled = true
+	sun.directional_shadow_max_distance = 70.0
+	sun.rotation_degrees = _theme["sun_rot"]
+	add_child(sun)
 
 
 func _make_textures() -> void:
@@ -123,10 +171,10 @@ func _glow_mat(color: Color, energy: float) -> StandardMaterial3D:
 	return m
 
 
-# ---------------------------------------------------------------- geometry
+# ---------------------------------------------------------------- shared geometry
 
 func _make_ground() -> void:
-	var gm := _mat(Color(0.16, 0.17, 0.15), 0.95)
+	var gm := _mat(_theme["ground"], 0.95)
 	gm.albedo_texture = _ground_tex
 	gm.uv1_scale = Vector3(14, 14, 1)
 	gm.normal_enabled = true
@@ -134,64 +182,26 @@ func _make_ground() -> void:
 	gm.normal_scale = 0.8
 	var g := _box(Vector3(0, -0.5, -5), Vector3(100, 1, 120), gm)
 	g.name = "Ground"
-	# A paved road down the middle.
-	var road := _mat(Color(0.09, 0.09, 0.1), 0.6)
+	var road := _mat(_theme["road"], 0.6)
 	_box(Vector3(0, 0.01, -5), Vector3(8, 0.04, 100), road, false)
-	# Dashed road markings.
-	var paint := _mat(Color(0.7, 0.65, 0.3), 0.7)
-	for i in 20:
-		_box(Vector3(0, 0.05, 42 - i * 5.0), Vector3(0.25, 0.02, 2.2), paint, false)
+	if level != 3:
+		var paint := _mat(Color(0.75, 0.7, 0.35), 0.7)
+		for i in 20:
+			_box(Vector3(0, 0.05, 42 - i * 5.0), Vector3(0.25, 0.02, 2.2), paint, false)
 
 
 func _make_perimeter() -> void:
-	var wall := _mat(Color(0.2, 0.21, 0.23), 0.9)
+	var wall := _mat(_theme["wall"], 0.9)
 	_box(Vector3(-50, 3, -5), Vector3(1.5, 6, 120), wall)
 	_box(Vector3(50, 3, -5), Vector3(1.5, 6, 120), wall)
 	_box(Vector3(0, 3, 55), Vector3(100, 6, 1.5), wall)
 	_box(Vector3(0, 3, -65), Vector3(100, 6, 1.5), wall)
 
 
-func _make_buildings() -> void:
-	var concrete := _mat(Color(0.25, 0.26, 0.28), 0.9)
-	var roof := _mat(Color(0.12, 0.12, 0.14), 0.8)
-	var window_lit := _glow_mat(Color(1.0, 0.75, 0.4), 2.2)
-	var window_blue := _glow_mat(Color(0.4, 0.7, 1.0), 1.8)
-	# [x, z, width, depth, height]
-	var specs := [
-		[-26.0, 22.0, 14.0, 12.0, 8.0],
-		[27.0, 18.0, 12.0, 14.0, 7.0],
-		[-28.0, -8.0, 12.0, 16.0, 9.0],
-		[28.0, -12.0, 14.0, 12.0, 8.0],
-		[-26.0, -36.0, 16.0, 12.0, 10.0],
-		[26.0, -38.0, 14.0, 14.0, 9.0],
-	]
-	for s in specs:
-		var cx: float = s[0]
-		var cz: float = s[1]
-		var w: float = s[2]
-		var d: float = s[3]
-		var h: float = s[4]
-		_box(Vector3(cx, h / 2.0, cz), Vector3(w, h, d), concrete)
-		_box(Vector3(cx, h + 0.15, cz), Vector3(w + 0.6, 0.3, d + 0.6), roof)
-		# Windows on the face toward the road.
-		var face: float = 1.0 if cx < 0.0 else -1.0
-		var fx: float = cx + face * (w / 2.0 + 0.02)
-		var count: int = int(d / 3.5)
-		for i in count:
-			var wz: float = cz - d / 2.0 + 2.0 + i * 3.5
-			for row in 2:
-				var wy: float = 2.6 + row * 3.0
-				if wy > h - 1.0:
-					continue
-				var lit: bool = (i + row + int(absf(cx))) % 3 != 0
-				var wm: Material = window_lit if lit else window_blue
-				_box(Vector3(fx, wy, wz), Vector3(0.1, 1.3, 1.6), wm, false)
-
-
 func _make_cover() -> void:
-	var crate := _mat(Color(0.32, 0.24, 0.14), 0.8)
-	var metal := _mat(Color(0.18, 0.2, 0.22), 0.4, 0.8)
-	var barrier := _mat(Color(0.35, 0.35, 0.36), 0.95)
+	var crate := _mat(_theme["crate"], 0.8)
+	var metal := _mat(Color(0.2, 0.22, 0.25), 0.4, 0.8)
+	var barrier := _mat(Color(0.4, 0.4, 0.42), 0.95)
 	var crate_spots := [
 		Vector3(-6, 0.75, 30), Vector3(7, 0.75, 27), Vector3(-10, 0.75, 14),
 		Vector3(10, 0.75, 10), Vector3(-5, 0.75, 0), Vector3(6, 0.75, -4),
@@ -220,7 +230,6 @@ func _make_cover() -> void:
 		cs.shape = sh
 		body.add_child(cs)
 		add_child(body)
-	# Concrete barriers forming chokepoints.
 	var barrier_spots := [
 		[Vector3(-4, 0.55, 20), 3.0], [Vector3(4, 0.55, 20), 3.0],
 		[Vector3(-4, 0.55, -10), 3.0], [Vector3(4, 0.55, -10), 3.0],
@@ -232,7 +241,8 @@ func _make_cover() -> void:
 
 func _make_lamps() -> void:
 	var pole_mat := _mat(Color(0.1, 0.1, 0.12), 0.5, 0.7)
-	var lamp_mat := _glow_mat(Color(1.0, 0.85, 0.6), 4.0)
+	var lamp_col: Color = Color(1.0, 0.85, 0.6)
+	var lamp_mat := _glow_mat(lamp_col, 4.0)
 	for i in 8:
 		var z: float = 44.0 - i * 14.0
 		for side in [-1.0, 1.0]:
@@ -242,15 +252,14 @@ func _make_lamps() -> void:
 			if (i % 2 == 0) == (side > 0.0):
 				var l := OmniLight3D.new()
 				l.position = Vector3(x - side * 0.5, 5.8, z)
-				l.light_color = Color(1.0, 0.82, 0.55)
-				l.light_energy = 2.2
-				l.omni_range = 16.0
+				l.light_color = lamp_col
+				l.light_energy = 2.6
+				l.omni_range = 18.0
 				add_child(l)
 
 
 func _make_extraction() -> void:
 	var pad := _glow_mat(Color(0.1, 1.0, 0.4), 1.5)
-	pad.albedo_color.a = 0.6
 	_box(extract_pos + Vector3(0, 0.05, 0), Vector3(8, 0.1, 8), pad, false)
 	var beam := MeshInstance3D.new()
 	var cm := CylinderMesh.new()
@@ -272,12 +281,146 @@ func _make_extraction() -> void:
 	add_child(l)
 
 
+# ---------------------------------------------------------------- level 1: compound
+
+func _make_buildings() -> void:
+	_building_set([
+		[-26.0, 22.0, 14.0, 12.0, 8.0],
+		[27.0, 18.0, 12.0, 14.0, 7.0],
+		[-28.0, -8.0, 12.0, 16.0, 9.0],
+		[28.0, -12.0, 14.0, 12.0, 8.0],
+		[-26.0, -36.0, 16.0, 12.0, 10.0],
+		[26.0, -38.0, 14.0, 14.0, 9.0],
+	], _mat(Color(0.34, 0.35, 0.38), 0.9))
+
+
+func _building_set(specs: Array, concrete: Material) -> void:
+	var roof := _mat(Color(0.14, 0.14, 0.16), 0.8)
+	var window_lit := _glow_mat(Color(1.0, 0.75, 0.4), 2.2)
+	var window_blue := _glow_mat(Color(0.4, 0.7, 1.0), 1.8)
+	for s in specs:
+		var cx: float = s[0]
+		var cz: float = s[1]
+		var w: float = s[2]
+		var d: float = s[3]
+		var h: float = s[4]
+		_box(Vector3(cx, h / 2.0, cz), Vector3(w, h, d), concrete)
+		_box(Vector3(cx, h + 0.15, cz), Vector3(w + 0.6, 0.3, d + 0.6), roof)
+		var face: float = 1.0 if cx < 0.0 else -1.0
+		var fx: float = cx + face * (w / 2.0 + 0.02)
+		var count: int = int(d / 3.5)
+		for i in count:
+			var wz: float = cz - d / 2.0 + 2.0 + i * 3.5
+			for row in 2:
+				var wy: float = 2.6 + row * 3.0
+				if wy > h - 1.0:
+					continue
+				var lit: bool = (i + row + int(absf(cx))) % 3 != 0
+				var wm: Material = window_lit if lit else window_blue
+				_box(Vector3(fx, wy, wz), Vector3(0.1, 1.3, 1.6), wm, false)
+
+
+# ---------------------------------------------------------------- level 2: port
+
+func _make_containers() -> void:
+	var colors := [
+		Color(0.7, 0.18, 0.15), Color(0.15, 0.35, 0.6), Color(0.2, 0.5, 0.3),
+		Color(0.85, 0.55, 0.12), Color(0.5, 0.5, 0.55), Color(0.45, 0.2, 0.5),
+	]
+	var idx: int = 0
+	for z in [30.0, 16.0, 2.0, -12.0, -26.0, -38.0]:
+		for x in [-30.0, -20.0, 20.0, 30.0]:
+			var c: Color = colors[idx % colors.size()]
+			var m := _mat(c, 0.55, 0.3)
+			_box(Vector3(x, 1.3, z), Vector3(2.6, 2.6, 6.0), m)
+			if idx % 3 == 0:
+				var m2 := _mat(colors[(idx + 2) % colors.size()], 0.55, 0.3)
+				_box(Vector3(x, 3.9, z), Vector3(2.6, 2.6, 6.0), m2)
+			idx += 1
+	# Loose containers in the open lane for cover.
+	_box(Vector3(-10, 1.3, 8), Vector3(6.0, 2.6, 2.6), _mat(colors[1], 0.55, 0.3))
+	_box(Vector3(10, 1.3, -18), Vector3(6.0, 2.6, 2.6), _mat(colors[0], 0.55, 0.3))
+	_box(Vector3(-9, 1.3, -32), Vector3(6.0, 2.6, 2.6), _mat(colors[3], 0.55, 0.3))
+	# Warehouses and a crane at the far end.
+	_building_set([
+		[-28.0, 46.0, 14.0, 8.0, 7.0],
+		[28.0, 46.0, 14.0, 8.0, 7.0],
+	], _mat(Color(0.45, 0.42, 0.38), 0.9))
+	var crane := _mat(Color(0.9, 0.7, 0.1), 0.5, 0.4)
+	_box(Vector3(-40, 9, -20), Vector3(1.2, 18, 1.2), crane)
+	_box(Vector3(-30, 17.5, -20), Vector3(20, 1.0, 1.0), crane, false)
+
+
+# ---------------------------------------------------------------- level 3: snow outpost
+
+func _make_bunkers() -> void:
+	_building_set([
+		[-28.0, 14.0, 12.0, 10.0, 4.5],
+		[28.0, 8.0, 12.0, 10.0, 4.5],
+		[-28.0, -18.0, 12.0, 12.0, 5.0],
+		[28.0, -24.0, 12.0, 12.0, 5.0],
+		[-26.0, -46.0, 14.0, 10.0, 5.0],
+		[26.0, -46.0, 14.0, 10.0, 5.0],
+	], _mat(Color(0.55, 0.58, 0.62), 0.9))
+
+
+func _make_trees() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var trunk := _mat(Color(0.25, 0.18, 0.12), 0.9)
+	var leaf := _mat(Color(0.12, 0.3, 0.2), 0.9)
+	var snow := _mat(Color(0.95, 0.97, 1.0), 0.95)
+	for i in 46:
+		var side: float = -1.0 if rng.randf() < 0.5 else 1.0
+		var x: float = side * rng.randf_range(18.0, 46.0)
+		var z: float = rng.randf_range(-58.0, 50.0)
+		var h: float = rng.randf_range(5.0, 9.0)
+		_box(Vector3(x, 1.0, z), Vector3(0.5, 2.0, 0.5), trunk)
+		var body := Node3D.new()
+		body.position = Vector3(x, 2.0 + h / 2.0, z)
+		var cone := MeshInstance3D.new()
+		var cm := CylinderMesh.new()
+		cm.top_radius = 0.0
+		cm.bottom_radius = h * 0.32
+		cm.height = h
+		cone.mesh = cm
+		cone.material_override = leaf
+		body.add_child(cone)
+		var cap := MeshInstance3D.new()
+		var cm2 := CylinderMesh.new()
+		cm2.top_radius = 0.0
+		cm2.bottom_radius = h * 0.17
+		cm2.height = h * 0.45
+		cap.mesh = cm2
+		cap.material_override = snow
+		cap.position = Vector3(0, h * 0.28, 0)
+		body.add_child(cap)
+		add_child(body)
+
+
+func _make_tower() -> void:
+	var steel := _mat(Color(0.3, 0.32, 0.36), 0.5, 0.6)
+	_box(Vector3(0, 11, -58), Vector3(1.2, 22, 1.2), steel)
+	_box(Vector3(0, 22.3, -58), Vector3(0.6, 0.6, 0.6), _glow_mat(Color(1.0, 0.1, 0.1), 4.0), false)
+
+
+# ---------------------------------------------------------------- spawns
+
 func _make_spawns() -> void:
-	wave1_spawns = [
-		Vector3(-14, 1, 4), Vector3(14, 1, 2), Vector3(-8, 1, -6),
-		Vector3(9, 1, -8), Vector3(0, 1, -12),
-	]
-	wave2_spawns = [
-		Vector3(-16, 1, -30), Vector3(16, 1, -32), Vector3(-6, 1, -38),
-		Vector3(7, 1, -40), Vector3(0, 1, -28), Vector3(-20, 1, -22),
-	]
+	match level:
+		2:
+			waves = [
+				[Vector3(-12, 1, 6), Vector3(12, 1, 4), Vector3(-8, 1, -6), Vector3(8, 1, -8), Vector3(0, 1, -14)],
+				[Vector3(-12, 1, -28), Vector3(12, 1, -30), Vector3(-6, 1, -40), Vector3(6, 1, -40), Vector3(0, 1, -32), Vector3(-24, 1, -20)],
+			]
+		3:
+			waves = [
+				[Vector3(-12, 1, 10), Vector3(12, 1, 8), Vector3(0, 1, 0), Vector3(-8, 1, -8), Vector3(8, 1, -10)],
+				[Vector3(-14, 1, -20), Vector3(14, 1, -22), Vector3(0, 1, -26), Vector3(-8, 1, -32), Vector3(8, 1, -34), Vector3(-16, 1, -12)],
+				[Vector3(-10, 1, -40), Vector3(10, 1, -40), Vector3(-16, 1, -34), Vector3(16, 1, -34), Vector3(0, 1, -44)],
+			]
+		_:
+			waves = [
+				[Vector3(-14, 1, 4), Vector3(14, 1, 2), Vector3(-8, 1, -6), Vector3(9, 1, -8), Vector3(0, 1, -12)],
+				[Vector3(-16, 1, -30), Vector3(16, 1, -32), Vector3(-6, 1, -38), Vector3(7, 1, -40), Vector3(0, 1, -28), Vector3(-20, 1, -22)],
+			]
