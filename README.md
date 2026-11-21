@@ -13,20 +13,20 @@ You can also trigger a build manually: Actions -> Build Android APK -> Run workf
 
 ## What's in the game
 
-- Cinematic briefing and debrief with a voiced-in-text story (Specter, Colonel Hale, Raven)
-- Bright moonlit compound, dawn docks and snowy mountains with fog, bloom, shadows and lit windows
-- 3 weapons: M4-X rifle, VX-12 shotgun, P9 pistol (aim, reload, swap)
-- Enemy soldiers with line of sight, strafing, obstacle sliding and escalating waves
-- Three missions: Night Breach (night compound), Port Sarnak (dawn docks), Frozen Relay (snow outpost with a boss fight)
+- Three story missions, each a chain of set-pieces: sneak past guards, breach the gate, firefights, hold a terminal while it downloads, timed runs, a boss fight
+- Checkpoints after every objective
+- Cover system: crouch behind low cover to hide from enemy fire, then hold fire or aim to pop up and shoot
+- Stealth: crouch to halve how far guards can spot you; the suppressed P9 pistol silently kills unaware guards
+- Real CC0 gun models and prop models (trucks, containers, barrels, pines, rocks), plus explosions, dust and blood effects with camera shake
+- 3 weapons: M4-X rifle, VX-12 shotgun, P9 suppressed pistol (aim, reload, swap)
 - Pick any mission from the main menu
 - Beginner-friendly enemies: slow to react, modest accuracy, regenerating health
-- Touch controls: floating move stick, drag-to-look, fire / aim / jump / reload / swap buttons
-- Procedural gunshots and a dark ambient score (no external assets needed)
+- Procedural gunshots and ambient score
 
 ## Controls
 
-Touch: left side = move, right side = look, buttons bottom-right.
-Desktop (for testing in the Godot editor): WASD, mouse, left click fire, right click aim, R reload, Q swap, Space jump, Esc release mouse.
+Touch: left side = move, right side = look, buttons bottom-right (CROUCH is the bottom-left of the button cluster).
+Desktop (for testing in the Godot editor): WASD, mouse, left click fire, right click aim, R reload, Q swap, C crouch, Space jump, Esc release mouse.
 
 ## Run locally
 
@@ -38,3 +38,7 @@ Open the folder in Godot 4.3+, press F5.
 - Real art: import CC0 character/weapon models and PBR textures
 - Voice acting and a licensed music track
 - Settings menu (sensitivity, graphics quality)
+
+## Credits
+
+Gun models by Quaternius, environment models by Kenney and Quaternius (all CC0). The build runs an automated self-test of all three missions in GitHub Actions on every push.
