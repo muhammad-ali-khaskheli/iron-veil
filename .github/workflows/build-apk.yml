@@ -75,7 +75,7 @@ jobs:
             else
               FAIL=1
               BEAT=$(echo "$out" | grep SMOKE_BEAT | tail -1)
-              echo "::warning title=Smoke level $L FAILED::last beat: $BEAT | $(echo "$out" | grep -E 'SCRIPT ERROR|Parse Error|ERROR|at:' | head -8 | tr '\n' ' ' | cut -c1-900)"
+              echo "::warning title=Smoke level $L FAILED::last beat: $BEAT | $(echo "$out" | grep -E 'SCRIPT ERROR|Parse Error|ERROR|at:' | grep -v mesh_get_surface_count | grep -v 'Parameter "m" is null' | head -8 | tr '\n' ' ' | cut -c1-900)"
             fi
             if echo "$out" | grep -qE "SCRIPT ERROR"; then
               echo "::warning title=Runtime errors L$L::$(echo "$out" | grep -E 'SCRIPT ERROR|at:' | head -10 | tr '\n' ' ' | cut -c1-900)"

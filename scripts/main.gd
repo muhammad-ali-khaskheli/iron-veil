@@ -206,15 +206,12 @@ func _beat_goto(b: Dictionary) -> bool:
 		_say_async(b["lines"])
 	var ambush_done: bool = false
 	var t_left: float = float(b.get("time", -1.0))
-	var last: int = Time.get_ticks_msec()
 	while true:
 		await get_tree().create_timer(0.1).timeout
 		if state == "dead":
 			hud.set_timer("")
 			return false
-		var now: int = Time.get_ticks_msec()
-		var dt: float = float(now - last) / 1000.0
-		last = now
+		var dt: float = 0.1
 		if _smoke:
 			var sz: float = b["pos"].z
 			if b.has("ambush") and not ambush_done:
@@ -265,15 +262,12 @@ func _beat_zone(b: Dictionary) -> bool:
 	var waves: Array = []
 	if b.has("waves"):
 		waves = (b["waves"] as Array).duplicate()
-	var last: int = Time.get_ticks_msec()
 	while progress < secs:
 		await get_tree().create_timer(0.1).timeout
 		if state == "dead":
 			hud.hide_progress()
 			return false
-		var now: int = Time.get_ticks_msec()
-		var dt: float = float(now - last) / 1000.0
-		last = now
+		var dt: float = 0.1
 		if _smoke:
 			player.global_position = Vector3(b["pos"].x, 0.6, b["pos"].z)
 		var inside: bool = _flat_dist(player.global_position, b["pos"]) < float(b["r"])
